@@ -97,7 +97,7 @@ if __name__ == '__main__':
     parser.add_argument('--config',default='./configs/test_srno.yaml')
     parser.add_argument('--model')
     parser.add_argument('--scale_max', default='4')
-    parser.add_argument('--gpu', default='1')
+    parser.add_argument('--gpu', default='0')
     parser.add_argument('--mcell', default=False)
     args = parser.parse_args()
 
