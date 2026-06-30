@@ -103,8 +103,12 @@ class EDSR(nn.Module):
             self.url = url[url_name]
         else:
             self.url = None
-        self.sub_mean = MeanShift(args.rgb_range)
-        self.add_mean = MeanShift(args.rgb_range, sign=1)
+        if args.n_colors == 3:
+            self.sub_mean = MeanShift(args.rgb_range)
+            self.add_mean = MeanShift(args.rgb_range, sign=1)
+        else:
+            self.sub_mean = nn.Identity()
+            self.add_mean = nn.Identity()
 
         # define head module
         m_head = [conv(args.n_colors, n_feats, kernel_size)]
@@ -167,7 +171,8 @@ class EDSR(nn.Module):
 
 @register('edsr-baseline')
 def make_edsr_baseline(n_resblocks=16, n_feats=64, res_scale=1,
-                       scale=2, no_upsampling=False, rgb_range=1):
+                       scale=2, no_upsampling=False, rgb_range=1,
+                       n_colors=3):
     args = Namespace()
     args.n_resblocks = n_resblocks
     args.n_feats = n_feats
@@ -177,13 +182,14 @@ def make_edsr_baseline(n_resblocks=16, n_feats=64, res_scale=1,
     args.no_upsampling = no_upsampling
 
     args.rgb_range = rgb_range
-    args.n_colors = 3
+    args.n_colors = n_colors
     return EDSR(args)
 
 
 @register('edsr')
 def make_edsr(n_resblocks=32, n_feats=256, res_scale=0.1,
-              scale=2, no_upsampling=False, rgb_range=1):
+              scale=2, no_upsampling=False, rgb_range=1,
+              n_colors=3):
     args = Namespace()
     args.n_resblocks = n_resblocks
     args.n_feats = n_feats
@@ -193,5 +199,5 @@ def make_edsr(n_resblocks=32, n_feats=256, res_scale=0.1,
     args.no_upsampling = no_upsampling
 
     args.rgb_range = rgb_range
-    args.n_colors = 3
+    args.n_colors = n_colors
     return EDSR(args)

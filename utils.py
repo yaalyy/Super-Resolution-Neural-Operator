@@ -186,6 +186,29 @@ def make_optimizer(param_list, optimizer_spec, load_sd=False):
     return optimizer
 
 
+def numpy_collate(batch):
+    elem = batch[0]
+    if isinstance(elem, dict):
+        return {key: numpy_collate([sample[key] for sample in batch]) for key in elem}
+    if torch.is_tensor(elem):
+        return np.stack([sample.detach().cpu().numpy() for sample in batch], axis=0)
+    if isinstance(elem, np.ndarray):
+        return np.stack(batch, axis=0)
+    return np.asarray(batch)
+
+
+def to_device(value, device):
+    if torch.is_tensor(value):
+        return value.to(device, non_blocking=(device.type == 'cuda'))
+    if isinstance(value, np.ndarray):
+        return torch.as_tensor(value, device=device)
+    return value
+
+
+def batch_to_device(batch, device):
+    return {key: to_device(value, device) for key, value in batch.items()}
+
+
 def make_coord(shape, ranges=None, flatten=True):
     """ Make coordinates at grid centers.
     """
@@ -232,3 +255,14 @@ def calc_psnr(sr, hr, dataset=None, scale=1, rgb_range=1):
         valid = diff
     mse = valid.pow(2).mean()
     return -10 * torch.log10(mse)
+
+
+def calc_mse(pred, gt):
+    return (pred - gt).pow(2).mean()
+
+
+def calc_rel_l2(pred, gt, eps=1e-12):
+    diff = (pred - gt).reshape(pred.shape[0], -1)
+    target = gt.reshape(gt.shape[0], -1)
+    rel = torch.linalg.norm(diff, dim=1) / (torch.linalg.norm(target, dim=1) + eps)
+    return rel.mean()

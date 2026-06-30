@@ -15,11 +15,12 @@ from utils import show_feature_map
 @register('sronet')
 class SRNO(nn.Module):
 
-    def __init__(self, encoder_spec, width=256, blocks=16):
+    def __init__(self, encoder_spec, width=256, blocks=16, out_channels=3):
         super().__init__()
         self.width = width
         self.encoder = models.make(encoder_spec)
-        self.conv00 = nn.Conv2d((64 + 2)*4+2, self.width, 1)
+        encoder_dim = getattr(self.encoder, 'out_dim', 64)
+        self.conv00 = nn.Conv2d((encoder_dim + 2)*4+2, self.width, 1)
 
         self.conv0 = simple_attn(self.width, blocks)
         self.conv1 = simple_attn(self.width, blocks)
@@ -27,7 +28,7 @@ class SRNO(nn.Module):
         #self.conv3 = simple_attn(self.width, blocks)
         
         self.fc1 = nn.Conv2d(self.width, 256, 1)
-        self.fc2 = nn.Conv2d(256, 3, 1)
+        self.fc2 = nn.Conv2d(256, out_channels, 1)
         
     def gen_feat(self, inp):
         self.inp = inp
@@ -38,7 +39,8 @@ class SRNO(nn.Module):
         feat = (self.feat)
         grid = 0
 
-        pos_lr = make_coord(feat.shape[-2:], flatten=False).cuda() \
+        pos_lr = make_coord(feat.shape[-2:], flatten=False) \
+            .to(device=feat.device, dtype=feat.dtype) \
             .permute(2, 0, 1) \
             .unsqueeze(0).expand(feat.shape[0], 2, *feat.shape[-2:])
 
@@ -101,4 +103,3 @@ class SRNO(nn.Module):
     def forward(self, inp, coord, cell):
         self.gen_feat(inp)
         return self.query_rgb(coord, cell)
-

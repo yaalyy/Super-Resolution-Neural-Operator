@@ -27,8 +27,12 @@ def make_data_loader(spec, tag=''):
     for k, v in dataset[0].items():
         log('  {}: shape={}'.format(k, tuple(v.shape)))
 
+    num_workers = spec.get('num_workers', 8)
+    pin_memory = device.type == 'cuda'
+    collate_fn = utils.numpy_collate if num_workers > 0 else None
     loader = DataLoader(dataset, batch_size=spec['batch_size'],
-        shuffle=(tag == 'train'), num_workers=8, pin_memory=True,persistent_workers=True)
+        shuffle=(tag == 'train'), num_workers=num_workers, pin_memory=pin_memory,
+        persistent_workers=(num_workers > 0), collate_fn=collate_fn)
     return loader
 
 
@@ -41,7 +45,7 @@ def make_data_loaders():
 def prepare_training():
     if (config.get('resume') is not None) and os.path.exists(config.get('resume')):
         sv_file = torch.load(config['resume'],map_location=torch.device('cpu'))
-        model = models.make(sv_file['model'], load_sd=True).cuda()
+        model = models.make(sv_file['model'], load_sd=True).to(device)
         optimizer = utils.make_optimizer(
             model.parameters(), sv_file['optimizer'], load_sd=True)
         optimizer.param_groups[0]['lr'] = config['optimizer']['args']['lr']
@@ -56,7 +60,7 @@ def prepare_training():
             #lr_scheduler.step()
         print(epoch_start,optimizer.param_groups[0]['lr'])
     else:
-        model = models.make(config['model']).cuda()
+        model = models.make(config['model']).to(device)
         optimizer = utils.make_optimizer(
             model.parameters(), config['optimizer'])
         epoch_start = 1
@@ -79,11 +83,11 @@ def train(train_loader, model, optimizer, \
 
     data_norm = config['data_norm']
     t = data_norm['inp']
-    inp_sub = torch.FloatTensor(t['sub']).view(1, -1, 1, 1).cuda()
-    inp_div = torch.FloatTensor(t['div']).view(1, -1, 1, 1).cuda()
+    inp_sub = torch.FloatTensor(t['sub']).view(1, -1, 1, 1).to(device)
+    inp_div = torch.FloatTensor(t['div']).view(1, -1, 1, 1).to(device)
     t = data_norm['gt']
-    gt_sub = torch.FloatTensor(t['sub']).view(1, 1, -1).cuda()
-    gt_div = torch.FloatTensor(t['div']).view(1, 1, -1).cuda()
+    gt_sub = torch.FloatTensor(t['sub']).view(1, -1, 1, 1).to(device)
+    gt_div = torch.FloatTensor(t['div']).view(1, -1, 1, 1).to(device)
     
     #num_dataset = 800 # DIV2K
     #iter_per_epoch = int(num_dataset / config.get('train_dataset')['batch_size'] \
@@ -91,8 +95,7 @@ def train(train_loader, model, optimizer, \
     iteration = 0
     pbar = tqdm(train_loader, leave=False, desc='train')
     for batch in pbar:
-        for k, v in batch.items():
-            batch[k] = v.cuda(non_blocking=True)
+        batch = utils.batch_to_device(batch, device)
 
         inp = (batch['inp'] - inp_sub) / inp_div
         pred = model(inp, batch['coord'], batch['cell'])
@@ -119,8 +122,13 @@ def train(train_loader, model, optimizer, \
 
 
 def main(config_, save_path):
-    global config, log, writer
+    global config, log, writer, device
     config = config_
+    device_name = config.get('device')
+    if device_name is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'mps')
+    else:
+        device = torch.device(device_name)
     log, writer = utils.set_save_path(save_path, remove=True)
     with open(os.path.join(save_path, 'config.yaml'), 'w') as f:
         yaml.dump(config, f, sort_keys=False)
@@ -134,14 +142,17 @@ def main(config_, save_path):
 
     model, optimizer, epoch_start, lr_scheduler = prepare_training()
 
-    n_gpus = len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
+    n_gpus = len(os.environ.get('CUDA_VISIBLE_DEVICES', '').split(',')) \
+        if device.type == 'cuda' else 0
     if n_gpus > 1:
         model = nn.parallel.DataParallel(model)
 
     epoch_max = config['epoch_max']
     epoch_val = config.get('epoch_val')
     epoch_save = config.get('epoch_save')
-    max_val_v = -1e18
+    metric_mode = config.get('metric_mode', 'max')
+    best_val_v = float('inf') if metric_mode == 'min' else -1e18
+    metric_name = config.get('eval_type') or 'psnr'
 
     timer = utils.Timer()
 
@@ -188,12 +199,14 @@ def main(config_, save_path):
             val_res = eval_psnr(val_loader, model_,
                 data_norm=config['data_norm'],
                 eval_type=config.get('eval_type'),
-                eval_bsize=config.get('eval_bsize'))
+                eval_bsize=config.get('eval_bsize'),
+                clamp_output=config.get('clamp_output', True))
 
-            log_info.append('val: psnr={:.4f}'.format(val_res))
+            log_info.append('val: {}={:.6f}'.format(metric_name, val_res))
 #             writer.add_scalars('psnr', {'val': val_res}, epoch)
-            if val_res > max_val_v:
-                max_val_v = val_res
+            is_better = val_res < best_val_v if metric_mode == 'min' else val_res > best_val_v
+            if is_better:
+                best_val_v = val_res
                 torch.save(sv_file, os.path.join(save_path, 'epoch-best.pth'))
 
         t = timer.t()
@@ -227,4 +240,3 @@ if __name__ == '__main__':
     save_path = os.path.join('./save', save_name)
 
     main(config, save_path)
-
