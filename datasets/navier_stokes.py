@@ -10,13 +10,16 @@ class NavierStokesMat(Dataset):
 
     def __init__(self, path, field='u', sample_start=0, sample_end=None,
                  time_start=0, time_end=None, sample_step=1, time_step=1,
-                 first_k=None, repeat=1):
+                 first_k=None, repeat=1, one_frame_per_sample=False,
+                 random_time=False):
         self.path = path
         self.field = field
         self.sample_step = sample_step
         self.time_step = time_step
         self.first_k = first_k
         self.repeat = repeat
+        self.one_frame_per_sample = one_frame_per_sample
+        self.random_time = random_time
         self._file = None
 
         import h5py
@@ -45,8 +48,12 @@ class NavierStokesMat(Dataset):
         self.time_indices = list(range(time_start, time_end, time_step))
         if not self.has_time:
             self.time_indices = [0]
+            self.one_frame_per_sample = True
 
-        total = len(self.sample_indices) * len(self.time_indices)
+        if self.one_frame_per_sample:
+            total = len(self.sample_indices)
+        else:
+            total = len(self.sample_indices) * len(self.time_indices)
         if first_k is not None:
             total = min(total, first_k)
         self.total = total
@@ -68,8 +75,15 @@ class NavierStokesMat(Dataset):
     def __getitem__(self, idx):
         idx = idx % self.total
         n_times = len(self.time_indices)
-        sample_idx = self.sample_indices[idx // n_times]
-        time_idx = self.time_indices[idx % n_times]
+        if self.one_frame_per_sample:
+            sample_idx = self.sample_indices[idx]
+            if self.random_time:
+                time_idx = self.time_indices[np.random.randint(n_times)]
+            else:
+                time_idx = self.time_indices[idx % n_times]
+        else:
+            sample_idx = self.sample_indices[idx // n_times]
+            time_idx = self.time_indices[idx % n_times]
 
         dataset = self._get_file()[self.field]
         if self.has_time:
