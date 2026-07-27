@@ -1,0 +1,74 @@
+train_dataset:
+  dataset:
+    name: navier-stokes-mat
+    args:
+      path: ./data/Navier_Stokes_Dataset.mat
+      field: u
+      sample_start: 0
+      sample_end: 4000
+      time_start: 0
+      time_end: 50
+      first_k: 20000
+  wrapper:
+    name: pde-implicit-downsampled
+    args:
+      scale_min: 4
+      scale_max: 4
+      augment: false
+      interpolation: bicubic
+  batch_size: 64
+  num_workers: 0
+
+val_dataset:
+  dataset:
+    name: navier-stokes-mat
+    args:
+      path: ./data/Navier_Stokes_Dataset.mat
+      field: u
+      sample_start: 4000
+      sample_end: 5000
+      time_start: 0
+      time_end: 50
+      first_k: 2000
+  wrapper:
+    name: pde-implicit-downsampled
+    args:
+      scale_min: 4
+      scale_max: 4
+      augment: false
+      interpolation: bicubic
+  batch_size: 1
+  num_workers: 0
+
+eval_type: pde-rel-l2
+metric_mode: min
+clamp_output: false
+
+data_norm:
+  inp: {sub: [0.0], div: [1.0]}
+  gt: {sub: [0.0], div: [1.0]}
+
+model:
+  name: sronet
+  args:
+    out_channels: 1
+    encoder_spec:
+      name: edsr-baseline
+      args:
+        no_upsampling: true
+        n_colors: 1
+    width: 256
+    blocks: 16
+
+optimizer:
+  name: adam
+  args:
+    lr: 4.e-5
+
+epoch_max: 20
+warmup_step_lr:
+  multiplier: 1
+  total_epoch: 2
+
+epoch_val: 1
+epoch_save: 10

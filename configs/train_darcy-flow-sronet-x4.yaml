@@ -1,0 +1,66 @@
+train_dataset:
+  dataset:
+    name: darcy-flow-pt
+    args:
+      path: ./data/darcy_train_64.pt
+      field: y
+      first_k: 5000
+  wrapper:
+    name: pde-implicit-downsampled
+    args:
+      scale_min: 4
+      scale_max: 4
+      augment: false
+      interpolation: bicubic
+  batch_size: 32
+  num_workers: 0
+
+val_dataset:
+  dataset:
+    name: darcy-flow-pt
+    args:
+      path: ./data/darcy_test_64.pt
+      field: y
+      first_k: 1000
+  wrapper:
+    name: pde-implicit-downsampled
+    args:
+      scale_min: 4
+      scale_max: 4
+      augment: false
+      interpolation: bicubic
+  batch_size: 1
+  num_workers: 0
+
+eval_type: pde-rel-l2
+metric_mode: min
+clamp_output: false
+
+data_norm:
+  inp: {sub: [0.0], div: [1.0]}
+  gt: {sub: [0.0], div: [1.0]}
+
+model:
+  name: sronet
+  args:
+    out_channels: 1
+    encoder_spec:
+      name: edsr-baseline
+      args:
+        no_upsampling: true
+        n_colors: 1
+    width: 256
+    blocks: 16
+
+optimizer:
+  name: adam
+  args:
+    lr: 4.e-5
+
+epoch_max: 20
+warmup_step_lr:
+  multiplier: 1
+  total_epoch: 2
+
+epoch_val: 1
+epoch_save: 10

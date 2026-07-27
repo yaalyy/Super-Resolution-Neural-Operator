@@ -1,0 +1,27 @@
+test_dataset:
+  dataset:
+    name: navier-stokes-mat
+    args:
+      path: ./data/Navier_Stokes_Dataset.mat
+      field: u
+      sample_start: 4000
+      sample_end: 5000
+      time_start: 0
+      time_end: 50
+      first_k: 2000
+  wrapper:
+    name: pde-implicit-downsampled
+    args:
+      scale_min: 4
+      scale_max: 4
+      augment: false
+      interpolation: bicubic
+  batch_size: 1
+  num_workers: 0
+
+eval_type: pde-rel-l2
+clamp_output: false
+
+data_norm:
+  inp: {sub: [0.0], div: [1.0]}
+  gt: {sub: [0.0], div: [1.0]}
